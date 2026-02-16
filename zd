@@ -1,0 +1,88 @@
+#!/bin/bash
+
+# ==============================================================================
+# ZD (Zaki Debian) - 全功能安装维护脚本 (Debian 12 适配版)
+# ==============================================================================
+
+red='\e[0;31m'
+green='\e[0;32m'
+yellow='\e[0;33m'
+plain='\e[0m'
+
+# 检查权限
+[[ $(id -u) != 0 ]] && echo -e "${red}错误: 必须以root用户运行${plain}" && exit 1
+
+# 安装基础依赖 (Debian 版)
+if ! command -v curl &>/dev/null || ! command -v wget &>/dev/null; then
+    apt update -qq && apt install -y curl wget sudo > /dev/null
+fi
+
+# 横幅 (ZAKI 专属)
+echo -e "${yellow}  ________  ________  ___  __    ___ ${plain}"
+echo -e "${yellow} |\_____  \|\   __  \|\  \|\  \  |\  \ ${plain}"
+echo -e "${yellow}  \|___/  /\ \  \|\  \ \  \ \  \ \ \  \ ${plain}"
+echo -e "${yellow}      /  / /\ \   __  \ \  \ \  \ \ \  \ ${plain}"
+echo -e "${yellow}     /  /_/__\ \  \ \  \ \  \ \  \ \ \  \ ${plain}"
+echo -e "${yellow}    |\________\ \__\ \__\ \__\ \__\ \ \__\ ${plain}"
+echo -e "${yellow}     \|_______|\|__|\|__|\|__|\|__|  \|__| ${plain}"
+echo -e "-------------------------------------------" 
+
+echo -e "${red}请选择要执行的操作 (Debian 12 适配版)：${plain}"
+echo -e "${green}1. 安装 XrayR (对接机场面板)${plain}"
+echo -e "${green}2. 安装 V2bX (对接机场面板)${plain}"
+echo -e "${green}3. 安装 X-ui (多功能面板)${plain}"
+echo -e "${green}4. 重启 XrayR 服务${plain}"
+echo -e "${green}5. 安装 SingBox 全功能 (推荐)${plain}"
+echo -e "${green}6. 安装 Xray-SS2022${plain}"
+echo -e "${green}7. 安装 Xray-vless encryption (后量子加密)${plain}"
+echo -e "${green}8. 安装 Xray-vless vision reality (本仓重构版)${plain}"
+echo -e "${green}9. 一键配置 BBR 加速${plain}"
+echo -e "${yellow}*. 退出${plain}"
+
+read -p "请输入选项数字:" choice
+
+case "$choice" in
+    1)
+        echo "正在安装 XrayR..."
+        wget -N https://raw.githubusercontent.com/XrayR-project/XrayR-release/master/install.sh && bash install.sh
+        ;;
+    2)
+        echo "正在安装 V2bX..."
+        bash <(curl -Ls https://raw.githubusercontent.com/v2bX/v2bX-script/master/install.sh)
+        ;;
+    3)
+        echo "正在安装 X-ui..."
+        bash <(curl -Ls https://raw.githubusercontent.com/vaxilu/x-ui/master/install.sh)
+        ;;
+    4)
+        echo "正在重启 XrayR..."
+        systemctl restart XrayR || service XrayR restart
+        ;;
+    5)
+        echo "正在安装 SingBox 全功能..."
+        bash <(curl -Ls https://raw.githubusercontent.com/chika0801/sing-box-install/main/sing-box.sh)
+        ;;
+    6)
+        echo "正在安装 Xray-SS2022..."
+        curl -L https://raw.githubusercontent.com/RomanovCaesar/Install-Xray-Inbounds/main/install_ss2022.sh -o install_ss2022.sh && chmod +x install_ss2022.sh && ./install_ss2022.sh
+        ;;
+    7)
+        echo "正在安装 Xray-vless encryption..."
+        curl -L https://raw.githubusercontent.com/RomanovCaesar/Install-Xray-Inbounds/main/install_vless_encryption.sh -o install_vless_encryption.sh && chmod +x install_vless_encryption.sh && ./install_vless_encryption.sh
+        ;;
+    8)
+        echo "正在安装 Xray-vless vision reality (使用你仓库里的 Debian 专用版)..."
+        bash <(curl -Ls https://raw.githubusercontent.com/cshaizhihao/zaki-scripts/main/install_vless_reality_debian12.sh)
+        ;;
+    9)
+        echo "正在开启 BBR 加速..."
+        echo "net.core.default_qdisc=fq" >> /etc/sysctl.conf
+        echo "net.ipv4.tcp_congestion_control=bbr" >> /etc/sysctl.conf
+        sysctl -p
+        echo "BBR 已开启"
+        ;;
+    *)
+        echo "退出脚本。"
+        exit 0
+        ;;
+esac
