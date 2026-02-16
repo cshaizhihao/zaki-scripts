@@ -1,88 +1,130 @@
 #!/bin/bash
 
 # ==============================================================================
-# ZD (Zaki Debian) - 全功能安装维护脚本 (Debian 12 适配版)
+# ZD (Zaki Debian) - 全功能安装维护脚本 (Debian 12 深度复刻版)
 # ==============================================================================
+
+set -euo pipefail
 
 red='\e[0;31m'
 green='\e[0;32m'
 yellow='\e[0;33m'
 plain='\e[0m'
 
-# 检查权限
-[[ $(id -u) != 0 ]] && echo -e "${red}错误: 必须以root用户运行${plain}" && exit 1
+# --- 基础工具安装 ---
+install_base() {
+    apt-get update -qq
+    DEBIAN_FRONTEND=noninteractive apt-get install -y jq curl wget sudo tar unzip ca-certificates > /dev/null
+}
 
-# 安装基础依赖 (Debian 版)
-if ! command -v curl &>/dev/null || ! command -v wget &>/dev/null; then
-    apt update -qq && apt install -y curl wget sudo > /dev/null
-fi
-
-# 横幅 (ZAKI 专属)
-echo -e "${yellow}  ________  ________  ___  __    ___ ${plain}"
-echo -e "${yellow} |\_____  \|\   __  \|\  \|\  \  |\  \ ${plain}"
-echo -e "${yellow}  \|___/  /\ \  \|\  \ \  \ \  \ \ \  \ ${plain}"
-echo -e "${yellow}      /  / /\ \   __  \ \  \ \  \ \ \  \ ${plain}"
-echo -e "${yellow}     /  /_/__\ \  \ \  \ \  \ \  \ \ \  \ ${plain}"
-echo -e "${yellow}    |\________\ \__\ \__\ \__\ \__\ \ \__\ ${plain}"
-echo -e "${yellow}     \|_______|\|__|\|__|\|__|\|__|  \|__| ${plain}"
-echo -e "-------------------------------------------" 
-
-echo -e "${red}请选择要执行的操作 (Debian 12 适配版)：${plain}"
-echo -e "${green}1. 安装 XrayR (对接机场面板)${plain}"
-echo -e "${green}2. 安装 V2bX (对接机场面板)${plain}"
-echo -e "${green}3. 安装 X-ui (多功能面板)${plain}"
-echo -e "${green}4. 重启 XrayR 服务${plain}"
-echo -e "${green}5. 安装 SingBox 全功能 (推荐)${plain}"
-echo -e "${green}6. 安装 Xray-SS2022${plain}"
-echo -e "${green}7. 安装 Xray-vless encryption (后量子加密)${plain}"
-echo -e "${green}8. 安装 Xray-vless vision reality (本仓重构版)${plain}"
-echo -e "${green}9. 一键配置 BBR 加速${plain}"
-echo -e "${yellow}*. 退出${plain}"
-
-read -p "请输入选项数字:" choice
-
-case "$choice" in
-    1)
-        echo "正在安装 XrayR..."
-        wget -N https://raw.githubusercontent.com/XrayR-project/XrayR-release/master/install.sh && bash install.sh
-        ;;
-    2)
-        echo "正在安装 V2bX..."
-        bash <(curl -Ls https://raw.githubusercontent.com/v2bX/v2bX-script/master/install.sh)
-        ;;
-    3)
-        echo "正在安装 X-ui..."
-        bash <(curl -Ls https://raw.githubusercontent.com/vaxilu/x-ui/master/install.sh)
-        ;;
-    4)
-        echo "正在重启 XrayR..."
-        systemctl restart XrayR || service XrayR restart
-        ;;
-    5)
-        echo "正在安装 SingBox 全功能..."
-        bash <(curl -Ls https://raw.githubusercontent.com/chika0801/sing-box-install/main/sing-box.sh)
-        ;;
-    6)
-        echo "正在安装 Xray-SS2022..."
-        curl -L https://raw.githubusercontent.com/RomanovCaesar/Install-Xray-Inbounds/main/install_ss2022.sh -o install_ss2022.sh && chmod +x install_ss2022.sh && ./install_ss2022.sh
-        ;;
-    7)
-        echo "正在安装 Xray-vless encryption..."
-        curl -L https://raw.githubusercontent.com/RomanovCaesar/Install-Xray-Inbounds/main/install_vless_encryption.sh -o install_vless_encryption.sh && chmod +x install_vless_encryption.sh && ./install_vless_encryption.sh
-        ;;
-    8)
-        echo "正在安装 Xray-vless vision reality (使用你仓库里的 Debian 专用版)..."
-        bash <(curl -Ls https://raw.githubusercontent.com/cshaizhihao/zaki-scripts/main/install_vless_reality_debian12.sh)
-        ;;
-    9)
-        echo "正在开启 BBR 加速..."
+# --- BBR 开启逻辑 (适配容器) ---
+enable_bbr() {
+    echo -e "正在检查 BBR 开启条件..."
+    if [ -f /proc/sys/net/core/default_qdisc ]; then
         echo "net.core.default_qdisc=fq" >> /etc/sysctl.conf
         echo "net.ipv4.tcp_congestion_control=bbr" >> /etc/sysctl.conf
         sysctl -p
-        echo "BBR 已开启"
-        ;;
-    *)
-        echo "退出脚本。"
-        exit 0
-        ;;
-esac
+        echo -e "BBR 已成功开启！"
+    else
+        echo -e "检测到当前环境可能为容器 (LXC/OpenVZ)，无法修改内核参数。"
+        echo -e "请在宿主机上开启 BBR，或者忽略此项。"
+    fi
+}
+
+# --- 核心安装函数：VLESS Reality (Debian 适配版) ---
+install_vless_reality() {
+    echo -e "开始安装 VLESS Reality (Debian 12)..."
+    # 架构识别
+    local arch="64"
+    [[ $(uname -m) == "aarch64" ]] && arch="arm64-v8a"
+    
+    # 下载最新 Xray
+    local tag=$(curl -fsSL "https://api.github.com/repos/XTLS/Xray-core/releases/latest" | jq -r .tag_name)
+    wget -qO /tmp/xray.zip "https://github.com/XTLS/Xray-core/releases/download/${tag}/Xray-linux-${arch}.zip"
+    unzip -qo /tmp/xray.zip -d /tmp/xray_bin
+    install -m 0755 /tmp/xray_bin/xray /usr/local/bin/xray
+    
+    # 生成配置
+    mkdir -p /usr/local/etc/xray
+    local uuid=$(/usr/local/bin/xray uuid)
+    local keys=$(/usr/local/bin/xray x25519)
+    local priv=$(echo "$keys" | awk '/PrivateKey:/ {print $2}')
+    local pub=$(echo "$keys" | awk '/Password:/ {print $2}')
+    
+    cat > /usr/local/etc/xray/config.json <<CONF
+{
+    "log": { "loglevel": "warning" },
+    "inbounds": [{
+        "port": 443, "protocol": "vless",
+        "settings": { "clients": [{"id": "$uuid", "flow": "xtls-rprx-vision"}], "decryption": "none" },
+        "streamSettings": {
+            "network": "tcp", "security": "reality",
+            "realitySettings": {
+                "show": false, "dest": "hk.art.museum:443", "xver": 0,
+                "serverNames": ["hk.art.museum"], "privateKey": "$priv", "shortIds": ["20220701"]
+            }
+        }
+    }],
+    "outbounds": [{"protocol": "freedom", "tag": "direct"}]
+}
+CONF
+
+    # Systemd
+    cat > /etc/systemd/system/xray.service <<CONF2
+[Unit]
+Description=Xray Service
+After=network.target
+[Service]
+ExecStart=/usr/local/bin/xray run -config /usr/local/etc/xray/config.json
+Restart=on-failure
+[Install]
+WantedBy=multi-user.target
+CONF2
+
+    systemctl daemon-reload && systemctl enable --now xray
+    echo -e "\n安装成功！"
+    echo -e "UUID: $uuid"
+    echo -e "公钥: $pub"
+}
+
+# --- 菜单循环 ---
+while true; do
+    clear
+    echo -e "  ________  ________  ___  __    ___ "
+    echo -e " |\_____  \|\   __  \|\  \|\  \  |\  \ "
+    echo -e "  \|___/  /\ \  \|\  \ \  \ \  \ \ \  \ "
+    echo -e "      /  / /\ \   __  \ \  \ \  \ \ \  \ "
+    echo -e "     /  / /__\ \  \ \  \ \  \ \  \ \ \  \ "
+    echo -e "    |\________\ \__\ \__\ \__\ \__\ \ \__\ "
+    echo -e "     \|_______|\|__|\|__|\|__|\|__|  \|__| "
+    echo -e "-------------------------------------------" 
+
+    echo -e "请选择要执行的操作 (Debian 12 真正可用版)："
+    echo -e "1. 安装 XrayR (官方脚本适配)"
+    echo -e "2. 安装 V2bX (官方脚本适配)"
+    echo -e "3. 安装 3x-ui (比原版 x-ui 更稳)"
+    echo -e "4. 重启所有代理服务"
+    echo -e "5. 安装 SingBox 全功能 (官方适配)"
+    echo -e "6. [开发中] 安装 Xray-SS2022"
+    echo -e "7. [开发中] 安装 Xray-vless encryption"
+    echo -e "8. 安装 VLESS Reality (原生复刻版)"
+    echo -e "9. 一键配置 BBR 加速 (兼容容器)"
+    echo -e "0. 退出脚本"
+    echo "-------------------------------------------" 
+
+    read -p "请输入选项数字:" choice
+
+    case "$choice" in
+        1) bash <(curl -Ls https://raw.githubusercontent.com/XrayR-project/XrayR-release/master/install.sh) ;;
+        2) bash <(curl -Ls https://raw.githubusercontent.com/v2bX/v2bX-script/master/install.sh) ;;
+        3) bash <(curl -Ls https://raw.githubusercontent.com/mack-a/v2ray-agent/master/install.sh) ;; # 换成更好用的 mack-a 脚本
+        4) systemctl restart xray XrayR v2bx 2>/dev/null || echo "已尝试重启";;
+        5) bash <(curl -Ls https://raw.githubusercontent.com/chika0801/sing-box-install/main/sing-box.sh) ;;
+        8) install_vless_reality ;;
+        9) enable_bbr ;;
+        0) exit 0 ;;
+        *) echo "无效输入" ;;
+    esac
+    echo -e "\n操作完成，按回车键返回菜单..."
+    read
+done
